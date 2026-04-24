@@ -1,4 +1,9 @@
-from typing import Dict, List
+import re
+from typing import Dict, List, Set
+
+
+def _extract_function_names(code: str) -> Set[str]:
+    return set(re.findall(r"\bdef\s+(\w+)\s*\(", code))
 
 
 def assess_risk(
@@ -61,6 +66,19 @@ def assess_risk(
         # This is usually good, but still risky.
         score -= 5
         reasons.append("Bare except was modified, verify correctness.")
+
+    # ----------------------------
+    # Function removal / rename check
+    # ----------------------------
+    original_funcs = _extract_function_names(original_code)
+    fixed_funcs = _extract_function_names(fixed_code)
+    removed_funcs = original_funcs - fixed_funcs
+    if removed_funcs:
+        score -= 25
+        reasons.append(
+            f"Function(s) may have been removed or renamed: {', '.join(sorted(removed_funcs))}. "
+            "Verify callers still work."
+        )
 
     # ----------------------------
     # Clamp score

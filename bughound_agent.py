@@ -82,7 +82,12 @@ class BugHoundAgent:
             self._log("ANALYZE", "LLM output was not parseable JSON. Falling back to heuristics.")
             return self._heuristic_analyze(code_snippet)
 
-        return issues
+        validated = self._validate_llm_issues(issues)
+        dropped = len(issues) - len(validated)
+        if dropped > 0:
+            self._log("ANALYZE", f"Filtered {dropped} malformed issue(s) from LLM output (missing msg or unrecognized severity).")
+
+        return validated
 
     def propose_fix(self, code_snippet: str, issues: List[Dict[str, str]]) -> str:
         if not issues:
@@ -171,6 +176,15 @@ class BugHoundAgent:
     # ----------------------------
     # Parsing + utilities
     # ----------------------------
+    def _validate_llm_issues(self, issues: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        """Reject issues that are missing a message or have an unrecognized severity."""
+        valid_severities = {"low", "medium", "high"}
+        return [
+            i for i in issues
+            if i.get("msg", "").strip()
+            and str(i.get("severity", "")).lower() in valid_severities
+        ]
+
     def _parse_json_array_of_issues(self, text: str) -> Optional[List[Dict[str, str]]]:
         text = text.strip()
         parsed = self._try_json_loads(text)

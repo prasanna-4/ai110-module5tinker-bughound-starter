@@ -47,3 +47,25 @@ def test_mock_client_forces_llm_fallback_to_heuristics_for_analysis():
     assert any(issue.get("type") == "Code Quality" for issue in result["issues"])
     # Ensure we logged the fallback path
     assert any("Falling back to heuristics" in entry.get("message", "") for entry in result["logs"])
+
+
+def test_malformed_llm_issues_are_filtered():
+    # Guardrail: issues missing a msg or with an unrecognized severity should be
+    # silently dropped so they never reach the risk assessor or UI.
+    class MalformedClient:
+        def complete(self, system_prompt: str, user_prompt: str) -> str:
+            # Returns issues with: one valid, one missing msg, one bad severity
+            return (
+                '[{"type":"Bug","severity":"High","msg":"real issue"},'
+                ' {"type":"Bug","severity":"Critical","msg":"bad severity"},'
+                ' {"type":"Bug","severity":"Low","msg":""}]'
+            )
+
+    agent = BugHoundAgent(client=MalformedClient())
+    code = "def f():\n    return 1\n"
+    result = agent.run(code)
+
+    # Only the one valid issue should survive
+    assert len(result["issues"]) == 1
+    assert result["issues"][0]["msg"] == "real issue"
+    assert any("Filtered" in entry.get("message", "") for entry in result["logs"])

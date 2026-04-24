@@ -46,3 +46,28 @@ def test_missing_return_is_penalized():
     )
     assert risk["score"] < 100
     assert any("Return" in r or "return" in r for r in risk["reasons"])
+
+
+def test_removed_function_blocks_autofix():
+    # Guardrail: if the LLM inlines/removes a function that existed in the original,
+    # the risk must be high enough to prevent auto-fixing.
+    original = (
+        "def helper():\n"
+        "    return 42\n"
+        "\n"
+        "def main():\n"
+        "    return helper()\n"
+    )
+    fixed = (
+        "def main():\n"
+        "    return 42\n"  # helper() removed — any callers outside this file would break
+    )
+    risk = assess_risk(
+        original_code=original,
+        fixed_code=fixed,
+        issues=[{"type": "Code Quality", "severity": "Low", "msg": "minor style issue"}],
+    )
+    assert risk["should_autofix"] is False, "Removing a function should prevent auto-fix"
+    assert any(
+        "removed" in r.lower() or "renamed" in r.lower() for r in risk["reasons"]
+    ), "Risk reasons should mention the removed function"
